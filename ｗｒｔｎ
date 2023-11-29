@@ -1,0 +1,178 @@
+import tkinter as tk
+from tkinter import ttk, simpledialog
+from PIL import Image, ImageTk
+import pandas as pd
+
+# CSV 파일에서 데이터를 불러옵니다.
+df = pd.read_csv('꽃 자료 최종 (7).csv')
+
+# 장바구니를 저장하는 딕셔너리
+cart = {}
+# 장바구니의 내용을 표시하는 표
+cart_tree = None
+# second_page를 전역 변수로 선언합니다.
+second_page = None
+def create_second_page():
+    global second_page
+    second_page = tk.Toplevel(root)
+    second_page.title("꽃 선택")
+    second_page.geometry('480x720+200+0')
+    tab_parent = ttk.Notebook(second_page)
+
+    tabs = ['사랑', '감성', '감사', '분위기', '회상', '탄생화', '기타']
+    for tab in tabs:
+        tab_frame = ttk.Frame(tab_parent, width=480, height=720)  # 크기를 설정합니다.
+        tab_parent.add(tab_frame, text=tab)
+
+        # 스크롤바를 추가합니다.
+        canvas = tk.Canvas(tab_frame, height=500)  # 높이를 제한합니다.
+        scrollbar = ttk.Scrollbar(tab_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # 해당 탭의 카테고리에 해당하는 꽃들의 데이터를 가져옵니다.
+        flowers = df[df['카테고리'] == tab]
+
+        # 각 꽃의 사진을 세 열로 출력합니다.
+        for i in range(0, len(flowers), 3):
+            for j in range(3):
+                if i + j < len(flowers):
+                    flower = flowers.iloc[i + j]
+                    load = Image.open(flower['사진'])
+                    render = ImageTk.PhotoImage(load)
+                    img = tk.Label(scrollable_frame, image=render)
+                    img.image = render
+                    img.bind("<Button-1>", lambda e, f=flower: show_info(second_page, f))
+                    img.grid(row=i, column=j)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    tab_parent.pack(expand=1, fill='both')
+
+    # 장바구니 정보를 보여주는 부분
+    cart_label = tk.Label(second_page, text="")
+    cart_label.pack()
+    update_cart(second_page)
+
+def show_info(second_page, flower):
+    info = tk.Toplevel(second_page)
+    info.title("꽃 정보")
+    info.geometry('300x400')
+
+    load = Image.open(flower['사진'])
+    render = ImageTk.PhotoImage(load)
+    img = tk.Label(info, image=render)
+    img.image = render
+    img.pack()
+
+    tk.Label(info, text=f"꽃 이름: {flower['꽃 이름']}").pack()
+    tk.Label(info, text=f"꽃말: {flower['꽃말']}").pack()
+    tk.Label(info, text=f"가격: {flower['가격']}").pack()
+
+    num = tk.IntVar(value=1)
+    tk.Label(info, text="수량:").pack()
+    tk.Spinbox(info, from_=1, to=100, textvariable=num).pack()
+
+    # 버튼들을 담을 프레임을 생성합니다.
+    button_frame = tk.Frame(info)
+    button_frame.pack(fill='x', expand=True)
+
+    # 취소 버튼을 추가합니다.
+    cancel_button = tk.Button(button_frame, text="취소", command=info.destroy)
+    cancel_button.pack(side="left", fill='x', expand=True)
+
+    # 장바구니에 추가 버튼을 누르면 장바구니 업데이트 함수를 호출하고 팝업 창을 닫습니다.
+    add_button = tk.Button(button_frame, text="장바구니에 추가", command=lambda: (add_to_cart(flower, num.get(), second_page), info.destroy()))
+    add_button.pack(side="right", fill='x', expand=True)
+
+
+
+def add_to_cart(flower, num, second_page):
+    if flower['꽃 이름'] in cart:
+        cart[flower['꽃 이름']][1] += num
+    else:
+        cart[flower['꽃 이름']] = [flower['가격'], num]
+    # 장바구니를 업데이트합니다.
+    update_cart(second_page)
+def remove_from_cart(event):
+    global cart_tree, second_page
+    # cart_tree가 None인 경우 함수를 종료합니다.
+    if cart_tree is None:
+        return
+    # 클릭한 셀의 값을 가져옵니다.
+    item = cart_tree.identify('item', event.x, event.y)
+    column = cart_tree.identify('column', event.x, event.y)
+    value = cart_tree.set(item, column)
+    # 값이 '삭제'일 경우에만 삭제합니다.
+    if value == '삭제':
+        # 클릭한 행의 꽃 이름을 가져옵니다.
+        flower_name = cart_tree.set(item, '#1')
+        # 장바구니에서 꽃을 삭제합니다.
+        del cart[flower_name]
+        # 장바구니를 업데이트합니다.
+        update_cart(second_page)
+def update_cart(second_page):
+    global cart_tree
+    # 기존의 장바구니 표를 삭제합니다.
+    if cart_tree is not None:
+        cart_tree.destroy()
+    # 기존의 장바구니 표를 삭제합니다.
+    if hasattr(second_page, 'cart_frame'):
+        second_page.cart_frame.destroy()
+
+    # 장바구니의 내용을 표시하는 프레임을 생성합니다.
+    cart_frame = tk.Frame(second_page)
+    cart_frame.pack(side='bottom', anchor='w', padx=10, pady=10)  # 화면 하단에 배치합니다.
+
+    # 결제하기 버튼을 추가합니다.
+    checkout_button = tk.Button(cart_frame, text="결제하기", height=15)
+    checkout_button.pack(side="right")
+
+    # 장바구니의 내용을 표시하는 표를 생성합니다.
+    cart_tree = ttk.Treeview(cart_frame, columns=('flower', 'num', 'subtotal', 'remove'), show='headings')
+    cart_tree.column('flower', width=100, anchor='center')
+    cart_tree.column('num', width=100, anchor='center')
+    cart_tree.column('subtotal', width=100, anchor='center')
+    cart_tree.column('remove', width=100, anchor='center')
+    cart_tree.heading('flower', text='꽃 이름')
+    cart_tree.heading('num', text='구매 수량')
+    cart_tree.heading('subtotal', text='소계')
+    cart_tree.heading('remove', text='삭제')
+    cart_tree.pack()
+
+    total = 0
+    for flower, (price, num) in cart.items():
+        subtotal = price * num
+        total += subtotal
+        cart_tree.insert('', 'end', values=(flower, num, subtotal, '삭제'))
+
+    # 총합계를 표시하는 행을 추가합니다.
+    cart_tree.insert('', 'end', values=('', '총합계', total, ''))
+
+    # 참조를 유지합니다.
+    second_page.cart_frame = cart_frame
+
+    # 트리뷰에 이벤트를 연결합니다.
+    cart_tree.bind("<Button-1>", remove_from_cart)
+
+root = tk.Tk()
+root.title("오직, 당신만을 위한 꽃")
+root.geometry('480x720+200+0')
+
+title_label = tk.Label(root, text="오직, 당신만을 위한 꽃")
+title_label.pack(padx=10, pady=10)
+
+create_button = tk.Button(root, text="만들기", command=create_second_page)
+create_button.pack(padx=10, pady=10)
+
+root.mainloop()
